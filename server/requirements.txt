@@ -5,3 +5,5 @@ PyJWT
 Werkzeug
 python-dotenv
 psycopg2-binary
+google-generativeai
+Pillow

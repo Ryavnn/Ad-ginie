@@ -1,4 +1,5 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
+from flask.cli import load_dotenv
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -6,16 +7,34 @@ from datetime import datetime, timedelta
 import jwt
 import os
 from functools import wraps
+import google.generativeai as genai
+import PIL.Image
+
+
+load_dotenv()
+
+# Configure the Gemini API
+api_key = os.getenv("GEMINI_API_KEY")
+if not api_key:
+    raise ValueError("GEMINI_API_KEY not found. Please set it in your .env file.")
+genai.configure(api_key=api_key)
 
 app = Flask(__name__)
 CORS(app)
 
-# Configuration
+
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Ensure the upload folder exists
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///adgenie.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
+
 
 # User Model
 class User(db.Model):
@@ -238,6 +257,116 @@ def health_check():
         'status': 'healthy',
         'message': 'Ad Genie API is running'
     }), 200
+
+def allowed_file(filename):
+    """Checks if a filename has an allowed extension."""
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# --- API Routes ---
+
+@app.route('/api/generate-ad', methods=['POST'])
+def generate_ad_route():
+    """
+    The main API endpoint to generate ad content.
+    Receives form data and an optional image.
+    """
+    try:
+        # 1. Get text data from the form
+        description = request.form.get('description')
+        style = request.form.get('style')
+        tone = request.form.get('tone')
+        base_caption = request.form.get('baseCaption', '')
+        # 'getlist' is used to get all values for a key (for arrays)
+        platforms = request.form.getlist('platforms[]')
+
+        if not description:
+            return jsonify({"message": "Ad description is required."}), 400
+
+        image_file = None
+        image_prompt_part = None
+        image_url_for_response = None
+
+        # 2. Check for and handle the optional uploaded image
+        if 'image' in request.files:
+            image_file = request.files['image']
+            if image_file.filename != '' and allowed_file(image_file.filename):
+                # Secure the filename and save the file
+                filename = secure_filename(image_file.filename)
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                image_file.save(filepath)
+
+                # Create the public-facing URL for the saved image
+                # This assumes your Flask server is running on http://localhost:5000
+                image_url_for_response = f"http://localhost:5000/uploads/{filename}"
+                
+                # Prepare the image for the Gemini API
+                img = PIL.Image.open(filepath)
+                image_prompt_part = img
+            
+            elif image_file.filename != '':
+                # Invalid file type
+                return jsonify({"message": "Invalid file type. Allowed: png, jpg, jpeg, gif"}), 400
+
+        # 3. Construct the prompt for Gemini
+        platform_string = ", ".join(platforms) if platforms else "all major platforms"
+        
+        prompt = f"""
+        You are an expert social media marketing copywriter.
+        Your task is to generate a compelling ad caption.
+
+        **Ad Details:**
+        - **Product/Service Description:** {description}
+        - **Desired Style:** {style}
+        - **Desired Tone:** {tone}
+        - **Target Platforms:** {platform_string}
+        - **User's Base Caption (to refine, if any):** {base_caption or 'N/A'}
+
+        **Instructions:**
+        1. Analyze all the details provided.
+        2. If an image is provided, generate a caption that is highly relevant to the image.
+        3. If no image is provided, generate a caption based purely on the description.
+        4. The caption should be engaging, clear, and perfectly match the requested style and tone.
+        5. Return **only** the generated caption, with no extra text, labels, or formatting (like "Caption:" or quotes).
+        """
+
+        # 4. Call the Gemini API
+        # We use 'gemini-1.5-flash' as it's fast and multimodal (handles text + image)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        if image_prompt_part:
+            # Multimodal call (text + image)
+            response = model.generate_content([prompt, image_prompt_part])
+        else:
+            # Text-only call
+            response = model.generate_content(prompt)
+
+        generated_caption = response.text.strip()
+
+        # 5. Handle the image URL for the response
+        if not image_url_for_response:
+            # If no image was uploaded, provide a dynamic placeholder
+            placeholder_text = style.replace(' ', '+') or 'AI+Ad'
+            image_url_for_response = f"https://placehold.co/1080x1080/E0F2FE/0891B2?text={placeholder_text}"
+
+        # 6. Send the successful response back to the React app
+        return jsonify({
+            'caption': generated_caption,
+            'imageUrl': image_url_for_response
+        })
+
+    except Exception as e:
+        print(f"Error: {e}") # Log the error to your console
+        return jsonify({"message": f"An internal server error occurred: {e}"}), 500
+
+
+@app.route('/uploads/<path:filename>')
+def send_uploaded_file(filename):
+    """
+    A separate route to serve the files from the 'uploads' directory.
+    This allows the <img> tag in React to load the image.
+    """
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 # Error handlers
 @app.errorhandler(404)
