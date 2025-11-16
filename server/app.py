@@ -13,7 +13,6 @@ import PIL.Image
 
 load_dotenv()
 
-# Configure the Gemini API
 api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
     raise ValueError("GEMINI_API_KEY not found. Please set it in your .env file.")
@@ -27,7 +26,7 @@ UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Ensure the upload folder exists
+
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///adgenie.db'
@@ -287,7 +286,7 @@ def generate_ad_route():
         image_prompt_part = None
         image_url_for_response = None
 
-        # 2. Check for and handle the optional uploaded image
+ 
         if 'image' in request.files:
             image_file = request.files['image']
             if image_file.filename != '' and allowed_file(image_file.filename):
@@ -296,8 +295,6 @@ def generate_ad_route():
                 filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 image_file.save(filepath)
 
-                # Create the public-facing URL for the saved image
-                # This assumes your Flask server is running on http://localhost:5000
                 image_url_for_response = f"http://localhost:5000/uploads/{filename}"
                 
                 # Prepare the image for the Gemini API
@@ -330,26 +327,25 @@ def generate_ad_route():
         5. Return **only** the generated caption, with no extra text, labels, or formatting (like "Caption:" or quotes).
         """
 
-        # 4. Call the Gemini API
-        # We use 'gemini-1.5-flash' as it's fast and multimodal (handles text + image)
+
         model = genai.GenerativeModel('gemini-1.5-flash')
         
         if image_prompt_part:
-            # Multimodal call (text + image)
+     
             response = model.generate_content([prompt, image_prompt_part])
         else:
-            # Text-only call
+
             response = model.generate_content(prompt)
 
         generated_caption = response.text.strip()
 
-        # 5. Handle the image URL for the response
+ 
         if not image_url_for_response:
-            # If no image was uploaded, provide a dynamic placeholder
+  
             placeholder_text = style.replace(' ', '+') or 'AI+Ad'
             image_url_for_response = f"https://placehold.co/1080x1080/E0F2FE/0891B2?text={placeholder_text}"
 
-        # 6. Send the successful response back to the React app
+
         return jsonify({
             'caption': generated_caption,
             'imageUrl': image_url_for_response

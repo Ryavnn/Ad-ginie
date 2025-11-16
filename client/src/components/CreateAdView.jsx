@@ -13,21 +13,11 @@ import {
   Instagram,
   Facebook,
   Linkedin,
-  Twitter, // Assuming XIcon is Twitter
-  UploadCloud, // Using UploadCloud for the dropzone
+  Twitter, 
+  UploadCloud, 
 } from "lucide-react";
 
-// --- Mock Icons (if you don't have lucide-react) ---
-// const Image = ({ className }) => <UploadCloud className={className} />;
-// const RefreshCw = ({ className }) => <span className={className}>🔄</span>;
-// const FileText = ({ className }) => <span className={className}>📄</span>;
-// const Eye = ({ className }) => <span className={className}>👁️</span>;
-// const Instagram = () => <span>[Insta]</span>;
-// const XIcon = () => <span>[X]</span>;
-// const TikTokIcon = () => <span>[TikTok]</span>;
-// const Facebook = () => <span>[FB]</span>;
-// const Linkedin = () => <span>[Li]</span>;
-// ----------------------------------------------------
+
 
 const CreateAdView = () => {
   // 3. STATE FOR ALL FORM INPUTS
@@ -47,9 +37,8 @@ const CreateAdView = () => {
     if (generatedAd?.caption) {
       setCaption(generatedAd.caption);
     }
-  }, [generatedAd]); // This effect runs when 'generatedAd' changes
-
-  // 6. HANDLER for the "Regenerate" button
+  }, [generatedAd]); 
+  
   const handleGenerateClick = () => {
     // Gather all state data into the object the hook expects
     const promptData = {
@@ -57,8 +46,8 @@ const CreateAdView = () => {
       style,
       tone,
       platforms: selectedPlatforms,
-      baseCaption: caption, // Send the user's current caption as a base
-      uploadedImage: uploadedFile, // This will be null if no file is selected
+      baseCaption: caption, 
+      uploadedImage: uploadedFile, 
     };
     generateAd(promptData);
   };
@@ -86,7 +75,7 @@ const CreateAdView = () => {
       icon: Twitter,
       color: "from-gray-800 to-gray-900",
     },
-    // { id: 'tiktok', name: 'TikTok', icon: TikTokIcon, color: 'from-gray-800 to-gray-900' },
+ 
     {
       id: "facebook",
       name: "Facebook",
