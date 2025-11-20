@@ -62,6 +62,27 @@ class User(db.Model):
             'created_at': self.created_at.isoformat()
         }
 
+
+# SocialAccount model to store connected social accounts for a user
+class SocialAccount(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    provider = db.Column(db.String(50), nullable=False)
+    username = db.Column(db.String(120), nullable=False)
+    token = db.Column(db.String(500), nullable=True)
+    connected = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'provider': self.provider,
+            'username': self.username,
+            'connected': self.connected,
+            'created_at': self.created_at.isoformat()
+        }
+
 # Create tables
 with app.app_context():
     db.create_all()
@@ -447,6 +468,77 @@ def generate_ad_route():
     except Exception as e:
         print(f"Error: {e}") # Log the error to your console
         return jsonify({"message": f"An internal server error occurred: {e}"}), 500
+
+
+# --- Social Accounts API ---
+@app.route('/api/accounts', methods=['GET'])
+@token_required
+def list_accounts(current_user):
+    """Return connected social accounts for the current user."""
+    try:
+        accounts = SocialAccount.query.filter_by(user_id=current_user.id).all()
+        return jsonify({'accounts': [a.to_dict() for a in accounts]}), 200
+    except Exception as e:
+        return jsonify({'message': f'Error listing accounts: {e}'}), 500
+
+
+@app.route('/api/accounts/connect', methods=['POST'])
+@token_required
+def connect_account(current_user):
+    """Connect or update a social account for the user.
+    This is a lightweight endpoint intended for demo/local use.
+    Expected JSON: { provider, username, token (optional) }
+    """
+    try:
+        data = request.get_json() or {}
+        provider = (data.get('provider') or '').strip().lower()
+        username = (data.get('username') or '').strip()
+        token_val = data.get('token')
+
+        if not provider or not username:
+            return jsonify({'message': 'provider and username are required'}), 400
+
+        # Check existing
+        existing = SocialAccount.query.filter_by(user_id=current_user.id, provider=provider).first()
+        if existing:
+            existing.username = username
+            if token_val:
+                existing.token = token_val
+            existing.connected = True
+            db.session.commit()
+            return jsonify({'message': 'Account updated', 'account': existing.to_dict()}), 200
+
+        account = SocialAccount(
+            user_id=current_user.id,
+            provider=provider,
+            username=username,
+            token=token_val,
+            connected=True
+        )
+        db.session.add(account)
+        db.session.commit()
+        return jsonify({'message': 'Account connected', 'account': account.to_dict()}), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': f'Error connecting account: {e}'}), 500
+
+
+@app.route('/api/accounts/<int:account_id>', methods=['DELETE'])
+@token_required
+def disconnect_account(current_user, account_id):
+    """Disconnect (delete) a social account belonging to the current user."""
+    try:
+        account = SocialAccount.query.get(account_id)
+        if not account or account.user_id != current_user.id:
+            return jsonify({'message': 'Account not found'}), 404
+
+        db.session.delete(account)
+        db.session.commit()
+        return jsonify({'message': 'Account disconnected'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': f'Error disconnecting account: {e}'}), 500
 
 
 @app.route('/uploads/<path:filename>')
