@@ -292,8 +292,20 @@ const CreateAdView = () => {
           </div>
         </div>
       </div>
+      {/* Floating Prompt AI button (bottom-right) */}
+      <button
+        onClick={handleGenerateClick}
+        disabled={isLoading}
+        aria-label="Prompt AI to generate ad"
+        className={`fixed bottom-6 right-6 z-50 p-4 rounded-full shadow-lg text-white transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-300 ${
+          isLoading ? 'bg-gray-400 cursor-wait' : 'bg-cyan-500 hover:bg-cyan-600'
+        }`}
+      >
+        <UploadCloud className="w-6 h-6" />
+      </button>
     </div>
   );
 };
 
 export default CreateAdView;
+

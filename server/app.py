@@ -3,6 +3,7 @@ from flask.cli import load_dotenv
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 import jwt
 import os
@@ -13,10 +14,14 @@ import PIL.Image
 
 load_dotenv()
 
+# Gemini API key is optional for local development. If not set, we will
+# fall back to a lightweight local caption generator so the feature still works.
 api_key = os.getenv("GEMINI_API_KEY")
-if not api_key:
-    raise ValueError("GEMINI_API_KEY not found. Please set it in your .env file.")
-genai.configure(api_key=api_key)
+USE_GEMINI = bool(api_key)
+if USE_GEMINI:
+    genai.configure(api_key=api_key)
+else:
+    print("GEMINI_API_KEY not found. Running in fallback/local mode.")
 
 app = Flask(__name__)
 CORS(app)
@@ -262,6 +267,75 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+
+def generate_local_caption(description, style, tone, platforms, base_caption, image_provided):
+    """A simple deterministic fallback caption generator for local dev.
+    Keeps behavior reasonable when Gemini isn't available.
+    """
+    platform_note = ''
+    if platforms:
+        if len(platforms) == 1:
+            platform_note = f" for {platforms[0].capitalize()}"
+        else:
+            platform_note = f" for {', '.join([p.capitalize() for p in platforms])}"
+
+    image_note = ' Featuring product image.' if image_provided else ''
+
+    # Keep caption concise and try to reflect style/tone
+    style_part = f" [{style}]" if style else ''
+    tone_part = f" ({tone})" if tone else ''
+
+    base = base_caption.strip() if base_caption else ''
+    if base:
+        caption = f"{base} — refined{style_part}{tone_part}{platform_note}.{image_note}"
+    else:
+        # Generate a short caption from the description
+        short_desc = description.strip()
+        if len(short_desc) > 120:
+            short_desc = short_desc[:117].rsplit(' ', 1)[0] + '...'
+        caption = f"{short_desc}{style_part}{tone_part}{platform_note}.{image_note}"
+
+    # Ensure the caption is a single line without excessive whitespace
+    return ' '.join(caption.split())
+
+
+def _try_generate_with_model(model_name, prompt, image_prompt_part):
+    """Attempt to generate content using a specific Gemini model name.
+    Returns the raw response object on success or raises the exception on failure.
+    """
+    # Using the specific stable version often resolves 404s
+    model = genai.GenerativeModel('gemini-1.5-flash-latest')
+    if image_prompt_part:
+        return model.generate_content([prompt, image_prompt_part])
+    return model.generate_content(prompt)
+
+
+def generate_with_best_model(prompt, image_prompt_part):
+    """Try a list of candidate Gemini models until one succeeds.
+    If none succeed, raise the last exception.
+    """
+    # Common candidate model names to try. Order matters (preferred -> fallback).
+    candidates = [
+        'gemini-1.5-pro',
+        'gemini-1.5-flash',
+        'gemini-1.5',
+        'gemini-1.0',
+    ]
+
+    last_exc = None
+    for name in candidates:
+        try:
+            print(f"Trying Gemini model: {name}")
+            resp = _try_generate_with_model(name, prompt, image_prompt_part)
+            return resp
+        except Exception as e:
+            # Model might not exist or not support this method; log and try next
+            print(f"Model {name} failed: {e}")
+            last_exc = e
+
+    # If we reached here, none of the candidates worked
+    raise last_exc if last_exc is not None else RuntimeError('No model candidates available')
+
 # --- API Routes ---
 
 @app.route('/api/generate-ad', methods=['POST'])
@@ -328,23 +402,42 @@ def generate_ad_route():
         """
 
 
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        if image_prompt_part:
-     
-            response = model.generate_content([prompt, image_prompt_part])
-        else:
+        generated_caption = None
 
-            response = model.generate_content(prompt)
+        # If GEMINI API key is available, try calling Gemini. If not,
+        # or if any error occurs, fall back to a lightweight local caption generator.
+        if USE_GEMINI:
+            try:
+                # Try to select a working model from known candidates
+                response = generate_with_best_model(prompt, image_prompt_part)
 
-        generated_caption = response.text.strip()
+                # Some SDK responses return text on .text or .response; be defensive.
+                generated_caption = getattr(response, 'text', None) or getattr(response, 'response', None)
+                if isinstance(generated_caption, (list, tuple)):
+                    generated_caption = ' '.join(map(str, generated_caption))
+                if generated_caption:
+                    generated_caption = str(generated_caption).strip()
 
- 
+            except Exception as e:
+                # Log error and fall back
+                print(f"Gemini generation failed, falling back to local generator: {e}")
+                generated_caption = None
+
+        # Use fallback when needed
+        if not generated_caption:
+            generated_caption = generate_local_caption(
+                description=description,
+                style=style,
+                tone=tone,
+                platforms=platforms,
+                base_caption=base_caption,
+                image_provided=bool(image_prompt_part),
+            )
+
         if not image_url_for_response:
-  
-            placeholder_text = style.replace(' ', '+') or 'AI+Ad'
+            # Make placeholder text generation robust
+            placeholder_text = (style or 'AI Ad').replace(' ', '+')
             image_url_for_response = f"https://placehold.co/1080x1080/E0F2FE/0891B2?text={placeholder_text}"
-
 
         return jsonify({
             'caption': generated_caption,

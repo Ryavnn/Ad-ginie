@@ -58,7 +58,7 @@ export const useAdGenerator = () => {
 
     try {
       // This is your backend endpoint that will call Gemini.
-      const response = await fetch("/api/generate-ad", {
+      const response = await fetch("http://127.0.0.1:5000/api/generate-ad", {
         method: "POST",
         body: formData,
         // Note: Don't set 'Content-Type' header manually for FormData.
