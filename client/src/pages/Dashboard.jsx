@@ -1068,7 +1068,7 @@ const AdGenieDashboard = () => {
         <div className="space-y-6">
           <div className="flex items-center gap-6">
             <div className="w-20 h-20 rounded-full bg-gradient-to-br from-cyan-500 to-purple-600 flex items-center justify-center text-white font-bold text-2xl">
-              AB
+              CK
             </div>
             <button className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl font-medium transition-colors">
               Change Avatar
@@ -1081,7 +1081,7 @@ const AdGenieDashboard = () => {
               </label>
               <input
                 type="text"
-                placeholder="Alex Brown"
+                placeholder="Cynthia Kuthea"
                 className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-cyan-500"
               />
             </div>
@@ -1102,7 +1102,7 @@ const AdGenieDashboard = () => {
             </label>
             <input
               type="email"
-              placeholder="alex@mybrand.com"
+              placeholder="ckuthea2021@gmail.com.com"
               className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-cyan-500"
             />
           </div>
@@ -1110,11 +1110,7 @@ const AdGenieDashboard = () => {
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               Timezone
             </label>
-            <select className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-cyan-500">
-              <option>UTC-5 (Eastern Time)</option>
-              <option>UTC-8 (Pacific Time)</option>
-              <option>UTC+0 (GMT)</option>
-            </select>
+
           </div>
         </div>
       </div>
