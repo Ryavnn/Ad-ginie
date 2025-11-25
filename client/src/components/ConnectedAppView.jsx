@@ -12,9 +12,43 @@ const PROVIDER_META = {
 };
 
 const ConnectedAccountsView = () => {
-  const { accounts, loading, error, connectAccount, disconnectAccount } = useAccounts();
+  const { accounts, loading, error, connectAccount, disconnectAccount, oauthStart, fetchAccounts } = useAccounts();
 
   const handleConnectClick = async (providerKey) => {
+    const oauthProviders = ['linkedin','x','facebook','instagram','tiktok'];
+
+    if (oauthProviders.includes(providerKey)) {
+      // For Instagram, use Facebook's OAuth (Instagram via Facebook app)
+      const providerForStart = providerKey === 'instagram' ? 'facebook' : providerKey;
+      try {
+        const authUrl = await oauthStart(providerForStart);
+        const w = window.open(authUrl, 'oauth', 'width=600,height=700');
+
+        const listener = (ev) => {
+          try {
+            if (ev?.data?.provider === providerForStart) {
+              fetchAccounts();
+              window.removeEventListener('message', listener);
+              if (w) w.close();
+            }
+          } catch (e) {}
+        };
+        window.addEventListener('message', listener);
+
+        // Polling as a fallback: when popup closes, refresh
+        const interval = setInterval(() => {
+          if (!w || w.closed) {
+            clearInterval(interval);
+            fetchAccounts();
+            window.removeEventListener('message', listener);
+          }
+        }, 1000);
+      } catch (e) {
+        alert(`Failed to start OAuth: ${e.message || e}`);
+      }
+      return;
+    }
+
     const username = window.prompt(`Enter the ${providerKey} username to connect (e.g. @yourbrand)`);
     if (!username) return;
     try {

@@ -61,6 +61,28 @@ export function useAccounts() {
     }
   };
 
+  const oauthStart = async (provider) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/accounts/oauth/${provider}/start`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to start OAuth');
+      return data.authUrl;
+    } catch (e) {
+      setError(e.message || String(e));
+      throw e;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const disconnectAccount = async (accountId) => {
     setLoading(true);
     setError(null);
@@ -90,6 +112,7 @@ export function useAccounts() {
     error,
     fetchAccounts,
     connectAccount,
+    oauthStart,
     disconnectAccount,
   };
 }

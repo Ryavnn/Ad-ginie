@@ -10,6 +10,9 @@ import os
 from functools import wraps
 import google.generativeai as genai
 import PIL.Image
+import requests
+import base64
+from urllib.parse import urlencode
 
 
 load_dotenv()
@@ -480,6 +483,396 @@ def list_accounts(current_user):
         return jsonify({'accounts': [a.to_dict() for a in accounts]}), 200
     except Exception as e:
         return jsonify({'message': f'Error listing accounts: {e}'}), 500
+
+
+# --- OAuth helper endpoints (LinkedIn implemented as example) ---
+def _get_redirect_base():
+    # In production, set this to your frontend URL
+    return os.getenv('SERVER_BASE', 'http://localhost:5000')
+
+
+@app.route('/api/accounts/oauth/<provider>/start', methods=['GET'])
+@token_required
+def oauth_start(current_user, provider):
+    """Return OAuth authorization URL for supported providers.
+    Currently implements LinkedIn. Frontend should open the returned URL in a new window.
+    """
+    provider = provider.lower()
+    # Redirect should point to the server callback by default
+    redirect_uri = os.getenv('LINKEDIN_REDIRECT_URI') or f"{_get_redirect_base()}/api/accounts/oauth/linkedin/callback"
+
+    # LinkedIn
+    if provider == 'linkedin':
+        client_id = os.getenv('LINKEDIN_CLIENT_ID')
+        if not client_id:
+            return jsonify({'message': 'LinkedIn client ID not configured'}), 500
+
+        params = {
+            'response_type': 'code',
+            'client_id': client_id,
+            'redirect_uri': redirect_uri,
+            'scope': 'r_liteprofile r_emailaddress',
+            'state': f'user-{current_user.id}-{int(datetime.utcnow().timestamp())}'
+        }
+        url = f"https://www.linkedin.com/oauth/v2/authorization?{urlencode(params)}"
+        return jsonify({'authUrl': url}), 200
+
+    # Twitter / X (OAuth2 authorization code)
+    if provider in ('x', 'twitter'):
+        client_id = os.getenv('X_CLIENT_ID')
+        if not client_id:
+            return jsonify({'message': 'Twitter/X client ID not configured'}), 500
+
+        params = {
+            'response_type': 'code',
+            'client_id': client_id,
+            'redirect_uri': os.getenv('X_REDIRECT_URI') or f"{_get_redirect_base()}/api/accounts/oauth/x/callback",
+            'scope': 'tweet.read users.read offline.access',
+            'state': f'user-{current_user.id}-{int(datetime.utcnow().timestamp())}',
+            # PKCE flow normally requires code_challenge here. For simple testing, we omit PKCE.
+        }
+        url = f"https://twitter.com/i/oauth2/authorize?{urlencode(params)}"
+        return jsonify({'authUrl': url}), 200
+
+    # Facebook / Instagram (via Facebook OAuth)
+    if provider in ('facebook', 'instagram'):
+        client_id = os.getenv('FACEBOOK_CLIENT_ID')
+        if not client_id:
+            return jsonify({'message': 'Facebook client ID not configured'}), 500
+        fb_redirect = os.getenv('FACEBOOK_REDIRECT_URI') or f"{_get_redirect_base()}/api/accounts/oauth/facebook/callback"
+        params = {
+            'client_id': client_id,
+            'redirect_uri': fb_redirect,
+            'state': f'user-{current_user.id}-{int(datetime.utcnow().timestamp())}',
+            'scope': 'public_profile,email,instagram_basic'
+        }
+        url = f"https://www.facebook.com/v16.0/dialog/oauth?{urlencode(params)}"
+        return jsonify({'authUrl': url}), 200
+
+    # TikTok OAuth
+    if provider == 'tiktok':
+        client_key = os.getenv('TIKTOK_CLIENT_KEY') or os.getenv('TIKTOK_CLIENT_ID')
+        if not client_key:
+            return jsonify({'message': 'TikTok client id not configured'}), 500
+        tt_redirect = os.getenv('TIKTOK_REDIRECT_URI') or f"{_get_redirect_base()}/api/accounts/oauth/tiktok/callback"
+        params = {
+            'client_key': client_key,
+            'response_type': 'code',
+            'scope': 'user.info.basic',
+            'redirect_uri': tt_redirect,
+            'state': f'user-{current_user.id}-{int(datetime.utcnow().timestamp())}'
+        }
+        url = f"https://open-api.tiktok.com/platform/oauth/connect?{urlencode(params)}"
+        return jsonify({'authUrl': url}), 200
+
+    return jsonify({'message': f'OAuth not implemented for provider: {provider}'}), 400
+
+
+@app.route('/api/accounts/oauth/linkedin/callback', methods=['GET'])
+def linkedin_callback():
+    """Callback endpoint that LinkedIn will redirect to with ?code=...&state=..."""
+    code = request.args.get('code')
+    state = request.args.get('state')
+    error = request.args.get('error')
+
+    if error:
+        return jsonify({'message': f'LinkedIn authorization error: {error}'}), 400
+
+    if not code:
+        return jsonify({'message': 'Missing code from LinkedIn'}), 400
+
+    client_id = os.getenv('LINKEDIN_CLIENT_ID')
+    client_secret = os.getenv('LINKEDIN_CLIENT_SECRET')
+    redirect_uri = os.getenv('LINKEDIN_REDIRECT_URI') or f"{_get_redirect_base()}/oauth/linkedin/callback"
+
+    if not client_id or not client_secret:
+        return jsonify({'message': 'LinkedIn client credentials not configured'}), 500
+
+    # Exchange code for access token
+    token_url = 'https://www.linkedin.com/oauth/v2/accessToken'
+    payload = {
+        'grant_type': 'authorization_code',
+        'code': code,
+        'redirect_uri': redirect_uri,
+        'client_id': client_id,
+        'client_secret': client_secret
+    }
+
+    try:
+        resp = requests.post(token_url, data=payload, timeout=10)
+        resp.raise_for_status()
+        token_data = resp.json()
+        access_token = token_data.get('access_token')
+    except Exception as e:
+        return jsonify({'message': f'Failed exchanging code for token: {e}'}), 500
+
+    # Fetch basic profile
+    try:
+        profile_resp = requests.get('https://api.linkedin.com/v2/me', headers={'Authorization': f'Bearer {access_token}'}, timeout=10)
+        profile_resp.raise_for_status()
+        profile = profile_resp.json()
+        # Construct a friendly username
+        first = profile.get('localizedFirstName') or ''
+        last = profile.get('localizedLastName') or ''
+        username = (first + ' ' + last).strip() or profile.get('id')
+    except Exception as e:
+        username = profile.get('id') if isinstance(profile, dict) and profile.get('id') else 'linkedin_user'
+
+    # For demonstration, we will *not* try to identify the logged-in app user via state.
+    # Instead, store a placeholder SocialAccount with user_id = 1 if it exists, or create user-less account.
+    # In production, you should validate `state` and associate with the authenticated user.
+
+    # Try to associate with user id if encoded in state
+    user_to_assign = None
+    try:
+        if state and state.startswith('user-'):
+            parts = state.split('-')
+            uid = int(parts[1])
+            user_to_assign = User.query.get(uid)
+    except Exception:
+        user_to_assign = None
+
+    if not user_to_assign:
+        # fallback: choose first user to make local testing easier
+        user_to_assign = User.query.first()
+
+    if not user_to_assign:
+        return jsonify({'message': 'No user available to associate account with. Create a user first.'}), 400
+
+    # Save SocialAccount
+    try:
+        existing = SocialAccount.query.filter_by(user_id=user_to_assign.id, provider='linkedin').first()
+        if existing:
+            existing.username = username
+            existing.token = access_token
+            existing.connected = True
+            db.session.commit()
+            saved = existing
+        else:
+            saved = SocialAccount(user_id=user_to_assign.id, provider='linkedin', username=username, token=access_token, connected=True)
+            db.session.add(saved)
+            db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': f'Failed saving LinkedIn account: {e}'}), 500
+
+    # For SPA flows, redirect back to frontend with a success message
+    frontend_base = os.getenv('FRONTEND_BASE', 'http://localhost:3000')
+    frontend_redirect = f"{frontend_base}/?oauth=linkedin&status=success"
+    return ("<script>window.opener && window.opener.postMessage({status:'ok',provider:'linkedin'}, '*');window.location='" + frontend_redirect + "';</script>"), 200
+
+
+@app.route('/api/accounts/oauth/x/callback', methods=['GET'])
+def x_callback():
+    code = request.args.get('code')
+    state = request.args.get('state')
+    error = request.args.get('error')
+    if error:
+        return jsonify({'message': f'Twitter/X authorization error: {error}'}), 400
+    if not code:
+        return jsonify({'message': 'Missing code from Twitter/X'}), 400
+
+    client_id = os.getenv('X_CLIENT_ID')
+    client_secret = os.getenv('X_CLIENT_SECRET')
+    redirect_uri = os.getenv('X_REDIRECT_URI') or f"{_get_redirect_base()}/api/accounts/oauth/x/callback"
+
+    token_url = 'https://api.twitter.com/2/oauth2/token'
+    try:
+        headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+        data = {
+            'code': code,
+            'grant_type': 'authorization_code',
+            'redirect_uri': redirect_uri,
+            'client_id': client_id,
+        }
+        # If client_secret exists, send basic auth
+        if client_secret:
+            auth = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+            headers['Authorization'] = f'Basic {auth}'
+        resp = requests.post(token_url, data=data, headers=headers, timeout=10)
+        resp.raise_for_status()
+        token_data = resp.json()
+        access_token = token_data.get('access_token')
+    except Exception as e:
+        return jsonify({'message': f'Failed exchanging code for token (X): {e}'}), 500
+
+    # Fetch profile
+    username = 'x_user'
+    try:
+        profile_resp = requests.get('https://api.twitter.com/2/users/me', headers={'Authorization': f'Bearer {access_token}'}, timeout=10)
+        profile_resp.raise_for_status()
+        p = profile_resp.json().get('data', {})
+        username = p.get('username') or p.get('name') or p.get('id')
+    except Exception:
+        pass
+
+    # Associate account to user (state or fallback)
+    user_to_assign = None
+    try:
+        if state and state.startswith('user-'):
+            parts = state.split('-')
+            uid = int(parts[1])
+            user_to_assign = User.query.get(uid)
+    except Exception:
+        user_to_assign = None
+    if not user_to_assign:
+        user_to_assign = User.query.first()
+    if not user_to_assign:
+        return jsonify({'message': 'No user available to associate account with. Create a user first.'}), 400
+
+    try:
+        existing = SocialAccount.query.filter_by(user_id=user_to_assign.id, provider='x').first()
+        if existing:
+            existing.username = username
+            existing.token = access_token
+            existing.connected = True
+            db.session.commit()
+            saved = existing
+        else:
+            saved = SocialAccount(user_id=user_to_assign.id, provider='x', username=username, token=access_token, connected=True)
+            db.session.add(saved)
+            db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': f'Failed saving X account: {e}'}), 500
+
+    frontend_base = os.getenv('FRONTEND_BASE', 'http://localhost:3000')
+    frontend_redirect = f"{frontend_base}/?oauth=x&status=success"
+    return ("<script>window.opener && window.opener.postMessage({status:'ok',provider:'x'}, '*');window.location='" + frontend_redirect + "';</script>"), 200
+
+
+@app.route('/api/accounts/oauth/facebook/callback', methods=['GET'])
+def facebook_callback():
+    code = request.args.get('code')
+    state = request.args.get('state')
+    error = request.args.get('error')
+    if error:
+        return jsonify({'message': f'Facebook authorization error: {error}'}), 400
+    if not code:
+        return jsonify({'message': 'Missing code from Facebook'}), 400
+
+    client_id = os.getenv('FACEBOOK_CLIENT_ID')
+    client_secret = os.getenv('FACEBOOK_CLIENT_SECRET')
+    redirect_uri = os.getenv('FACEBOOK_REDIRECT_URI') or f"{_get_redirect_base()}/api/accounts/oauth/facebook/callback"
+
+    token_url = 'https://graph.facebook.com/v16.0/oauth/access_token'
+    try:
+        resp = requests.get(token_url, params={'client_id': client_id, 'redirect_uri': redirect_uri, 'client_secret': client_secret, 'code': code}, timeout=10)
+        resp.raise_for_status()
+        token_data = resp.json()
+        access_token = token_data.get('access_token')
+    except Exception as e:
+        return jsonify({'message': f'Failed exchanging code for token (Facebook): {e}'}), 500
+
+    username = 'facebook_user'
+    try:
+        profile_resp = requests.get('https://graph.facebook.com/me', params={'access_token': access_token, 'fields': 'id,name'}, timeout=10)
+        profile_resp.raise_for_status()
+        p = profile_resp.json()
+        username = p.get('name') or p.get('id')
+    except Exception:
+        pass
+
+    user_to_assign = None
+    try:
+        if state and state.startswith('user-'):
+            parts = state.split('-')
+            uid = int(parts[1])
+            user_to_assign = User.query.get(uid)
+    except Exception:
+        user_to_assign = None
+    if not user_to_assign:
+        user_to_assign = User.query.first()
+    if not user_to_assign:
+        return jsonify({'message': 'No user available to associate account with. Create a user first.'}), 400
+
+    try:
+        existing = SocialAccount.query.filter_by(user_id=user_to_assign.id, provider='facebook').first()
+        if existing:
+            existing.username = username
+            existing.token = access_token
+            existing.connected = True
+            db.session.commit()
+            saved = existing
+        else:
+            saved = SocialAccount(user_id=user_to_assign.id, provider='facebook', username=username, token=access_token, connected=True)
+            db.session.add(saved)
+            db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': f'Failed saving Facebook account: {e}'}), 500
+
+    frontend_base = os.getenv('FRONTEND_BASE', 'http://localhost:3000')
+    frontend_redirect = f"{frontend_base}/?oauth=facebook&status=success"
+    return ("<script>window.opener && window.opener.postMessage({status:'ok',provider:'facebook'}, '*');window.location='" + frontend_redirect + "';</script>"), 200
+
+
+@app.route('/api/accounts/oauth/tiktok/callback', methods=['GET'])
+def tiktok_callback():
+    code = request.args.get('code')
+    state = request.args.get('state')
+    error = request.args.get('error')
+    if error:
+        return jsonify({'message': f'TikTok authorization error: {error}'}), 400
+    if not code:
+        return jsonify({'message': 'Missing code from TikTok'}), 400
+
+    client_key = os.getenv('TIKTOK_CLIENT_KEY') or os.getenv('TIKTOK_CLIENT_ID')
+    client_secret = os.getenv('TIKTOK_CLIENT_SECRET')
+    redirect_uri = os.getenv('TIKTOK_REDIRECT_URI') or f"{_get_redirect_base()}/api/accounts/oauth/tiktok/callback"
+
+    token_url = 'https://open-api.tiktok.com/oauth/access_token'
+    try:
+        resp = requests.post(token_url, data={'client_key': client_key, 'client_secret': client_secret, 'code': code, 'grant_type': 'authorization_code', 'redirect_uri': redirect_uri}, timeout=10)
+        resp.raise_for_status()
+        token_data = resp.json()
+        # token response structure may vary; try common keys
+        access_token = token_data.get('data', {}).get('access_token') or token_data.get('access_token')
+    except Exception as e:
+        return jsonify({'message': f'Failed exchanging code for token (TikTok): {e}'}), 500
+
+    username = 'tiktok_user'
+    try:
+        # User info endpoint - may vary by TikTok API version
+        user_resp = requests.get('https://open-api.tiktok.com/oauth/userinfo/', params={'access_token': access_token}, timeout=10)
+        user_resp.raise_for_status()
+        p = user_resp.json().get('data', {})
+        username = p.get('open_id') or p.get('display_name') or p.get('nickname')
+    except Exception:
+        pass
+
+    user_to_assign = None
+    try:
+        if state and state.startswith('user-'):
+            parts = state.split('-')
+            uid = int(parts[1])
+            user_to_assign = User.query.get(uid)
+    except Exception:
+        user_to_assign = None
+    if not user_to_assign:
+        user_to_assign = User.query.first()
+    if not user_to_assign:
+        return jsonify({'message': 'No user available to associate account with. Create a user first.'}), 400
+
+    try:
+        existing = SocialAccount.query.filter_by(user_id=user_to_assign.id, provider='tiktok').first()
+        if existing:
+            existing.username = username
+            existing.token = access_token
+            existing.connected = True
+            db.session.commit()
+            saved = existing
+        else:
+            saved = SocialAccount(user_id=user_to_assign.id, provider='tiktok', username=username, token=access_token, connected=True)
+            db.session.add(saved)
+            db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': f'Failed saving TikTok account: {e}'}), 500
+
+    frontend_base = os.getenv('FRONTEND_BASE', 'http://localhost:3000')
+    frontend_redirect = f"{frontend_base}/?oauth=tiktok&status=success"
+    return ("<script>window.opener && window.opener.postMessage({status:'ok',provider:'tiktok'}, '*');window.location='" + frontend_redirect + "';</script>"), 200
 
 
 @app.route('/api/accounts/connect', methods=['POST'])
