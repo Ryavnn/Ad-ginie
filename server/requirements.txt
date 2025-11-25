@@ -8,3 +8,6 @@ psycopg2-binary
 google-generativeai
 Pillow
 requests
+
+
+4231 0500 4055 2113 07/28 424

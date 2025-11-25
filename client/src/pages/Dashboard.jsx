@@ -36,6 +36,8 @@ import {
   Link2,
 } from "lucide-react";
 import { useAdGenerator } from "../hooks/useAdGenrator";
+import { useAds } from "../hooks/useAds";
+import { useAnalytics } from "../hooks/useAnalytics";
 import CreateAdView from "../components/CreateAdView";
 import ConnectedAccountsView from "../components/ConnectedAppView";
 
@@ -60,200 +62,39 @@ const AdGenieDashboard = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
 
-  // Sample data
-  const kpiData = [
-    {
-      label: "Total Ads Generated",
-      value: "1,247",
-      change: "+12%",
-      icon: Zap,
-      color: "from-purple-500 to-pink-500",
-    },
-    {
-      label: "Ads Published",
-      value: "892",
-      change: "+8%",
-      icon: Share2,
-      color: "from-blue-500 to-cyan-500",
-    },
-    {
-      label: "Total Impressions",
-      value: "2.4M",
-      change: "+24%",
-      icon: Eye,
-      color: "from-emerald-500 to-teal-500",
-    },
-    {
-      label: "Total Engagements",
-      value: "156K",
-      change: "+18%",
-      icon: Heart,
-      color: "from-orange-500 to-red-500",
-    },
-    {
-      label: "Scheduled Posts",
-      value: "47",
-      change: "+5",
-      icon: Clock,
-      color: "from-violet-500 to-purple-500",
-    },
-  ];
+  // Use hooks to fetch real data
+  const { ads, loading: adsLoading, fetchAds } = useAds();
+  const { kpis, platformAnalytics, activities, loading: analyticsLoading, fetchActivities } = useAnalytics();
 
-  const recentAds = [
-    {
-      id: 1,
-      title: "Summer Sale Campaign",
-      platforms: ["instagram", "facebook"],
-      status: "Posted",
-      date: "2 hours ago",
-      impressions: "12.5K",
-      engagement: "890",
-    },
-    {
-      id: 2,
-      title: "Product Launch Teaser",
-      platforms: ["x", "linkedin"],
-      status: "Scheduled",
-      date: "Tomorrow 10:00 AM",
-      impressions: "-",
-      engagement: "-",
-    },
-    {
-      id: 3,
-      title: "Behind the Scenes",
-      platforms: ["tiktok", "instagram"],
-      status: "Draft",
-      date: "3 days ago",
-      impressions: "-",
-      engagement: "-",
-    },
-    {
-      id: 4,
-      title: "Customer Testimonial",
-      platforms: ["facebook", "linkedin"],
-      status: "Posted",
-      date: "1 day ago",
-      impressions: "8.2K",
-      engagement: "645",
-    },
-  ];
+  // Format ads for display
+  const recentAds = ads.map((ad) => ({
+    id: ad.id,
+    title: ad.title,
+    platforms: ad.platforms || [],
+    status: ad.status,
+    date: ad.created_at ? new Date(ad.created_at).toLocaleDateString() : "N/A",
+    impressions: ad.impressions || 0,
+    engagement: ad.engagement || 0,
+  }));
 
-  const activities = [
-    {
-      type: "post",
-      message: 'Posted "Summer Sale Campaign" to Instagram',
-      time: "2 hours ago",
-      icon: Instagram,
-      color: "text-pink-500",
-    },
-    {
-      type: "schedule",
-      message: "Scheduled post for Twitter/X",
-      time: "4 hours ago",
-      icon: Calendar,
-      color: "text-blue-500",
-    },
-    {
-      type: "account",
-      message: "Connected LinkedIn account",
-      time: "1 day ago",
-      icon: Link2,
-      color: "text-green-500",
-    },
-    {
-      type: "draft",
-      message: 'Saved draft "Product Launch"',
-      time: "2 days ago",
-      icon: FileText,
+  // Format activities for display
+  const activitiesDisplay = activities.map((activity) => {
+    const iconMap = {
+      instagram: Instagram,
+      calendar: Calendar,
+      link2: Link2,
+      "file-text": FileText,
+      share2: Share2,
+      zap: Zap,
+    };
+    return {
+      type: activity.type,
+      message: activity.message,
+      time: activity.created_at ? new Date(activity.created_at).toLocaleDateString() : "N/A",
+      icon: iconMap[activity.icon_type] || FileText,
       color: "text-gray-500",
-    },
-  ];
-
-  const connectedAccounts = [
-    {
-      platform: "Instagram",
-      username: "@yourbrand",
-      connected: true,
-      icon: Instagram,
-      color: "bg-gradient-to-br from-purple-500 via-pink-500 to-orange-500",
-    },
-    {
-      platform: "Twitter/X",
-      username: "@yourbrand",
-      connected: true,
-      icon: XIcon,
-      color: "bg-black",
-    },
-    {
-      platform: "TikTok",
-      username: "@yourbrand",
-      connected: true,
-      icon: TikTokIcon,
-      color: "bg-black",
-    },
-    {
-      platform: "Facebook",
-      username: "Your Brand",
-      connected: true,
-      icon: Facebook,
-      color: "bg-blue-600",
-    },
-    {
-      platform: "LinkedIn",
-      username: "Your Company",
-      connected: false,
-      icon: Linkedin,
-      color: "bg-blue-700",
-    },
-  ];
-
-  const platformAnalytics = [
-    {
-      platform: "Instagram",
-      impressions: "854K",
-      engagement: "45.2K",
-      ctr: "5.3%",
-      growth: "+12%",
-      icon: Instagram,
-      color: "text-pink-500",
-    },
-    {
-      platform: "Twitter/X",
-      impressions: "623K",
-      engagement: "38.1K",
-      ctr: "6.1%",
-      growth: "+8%",
-      icon: XIcon,
-      color: "text-gray-900",
-    },
-    {
-      platform: "TikTok",
-      impressions: "512K",
-      engagement: "52.8K",
-      ctr: "10.3%",
-      growth: "+28%",
-      icon: TikTokIcon,
-      color: "text-gray-900",
-    },
-    {
-      platform: "Facebook",
-      impressions: "298K",
-      engagement: "15.4K",
-      ctr: "5.2%",
-      growth: "+5%",
-      icon: Facebook,
-      color: "text-blue-600",
-    },
-    {
-      platform: "LinkedIn",
-      impressions: "145K",
-      engagement: "8.9K",
-      ctr: "6.1%",
-      growth: "+15%",
-      icon: Linkedin,
-      color: "text-blue-700",
-    },
-  ];
+    };
+  });
 
   const PlatformIcon = ({ platform, className = "w-5 h-5" }) => {
     switch (platform) {
@@ -364,25 +205,35 @@ const AdGenieDashboard = () => {
     <div className="space-y-6">
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        {kpiData.map((kpi, idx) => (
-          <div
-            key={idx}
-            className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 hover:shadow-lg transition-shadow"
-          >
-            <div className="flex items-start justify-between mb-4">
-              <div
-                className={`w-12 h-12 rounded-xl bg-gradient-to-br ${kpi.color} flex items-center justify-center`}
-              >
-                <kpi.icon className="w-6 h-6 text-white" />
+        {kpis.map((kpi, idx) => {
+          const iconMap = {
+            Zap: Zap,
+            Share2: Share2,
+            Eye: Eye,
+            Heart: Heart,
+            Clock: Clock,
+          };
+          const Icon = iconMap[kpi.icon] || Zap;
+          return (
+            <div
+              key={idx}
+              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 hover:shadow-lg transition-shadow"
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div
+                  className={`w-12 h-12 rounded-xl bg-linear-to-br ${kpi.color} flex items-center justify-center`}
+                >
+                  <Icon className="w-6 h-6 text-white" />
+                </div>
+                <span className="text-sm font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-lg">
+                  {kpi.change}
+                </span>
               </div>
-              <span className="text-sm font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-lg">
-                {kpi.change}
-              </span>
+              <p className="text-3xl font-bold text-gray-900 mb-1">{kpi.value}</p>
+              <p className="text-sm text-gray-500">{kpi.label}</p>
             </div>
-            <p className="text-3xl font-bold text-gray-900 mb-1">{kpi.value}</p>
-            <p className="text-sm text-gray-500">{kpi.label}</p>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Quick Actions */}
@@ -501,22 +352,26 @@ const AdGenieDashboard = () => {
           Recent Activity
         </h3>
         <div className="space-y-3">
-          {activities.map((activity, idx) => (
-            <div
-              key={idx}
-              className="flex items-center gap-4 p-4 rounded-xl hover:bg-gray-50 transition-colors"
-            >
+          {activitiesDisplay.length > 0 ? (
+            activitiesDisplay.map((activity, idx) => (
               <div
-                className={`w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center ${activity.color}`}
+                key={idx}
+                className="flex items-center gap-4 p-4 rounded-xl hover:bg-gray-50 transition-colors"
               >
-                <activity.icon className="w-5 h-5" />
+                <div
+                  className={`w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center ${activity.color}`}
+                >
+                  <activity.icon className="w-5 h-5" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm text-gray-900">{activity.message}</p>
+                  <p className="text-xs text-gray-500 mt-1">{activity.time}</p>
+                </div>
               </div>
-              <div className="flex-1">
-                <p className="text-sm text-gray-900">{activity.message}</p>
-                <p className="text-xs text-gray-500 mt-1">{activity.time}</p>
-              </div>
-            </div>
-          ))}
+            ))
+          ) : (
+            <p className="text-sm text-gray-500">No activities yet</p>
+          )}
         </div>
       </div>
     </div>
@@ -556,7 +411,7 @@ const AdGenieDashboard = () => {
               onClick={() => setViewMode("grid")}
               className={`p-2 rounded-xl transition-colors ${
                 viewMode === "grid"
-                  ? "bg-gradient-to-r from-cyan-500 to-purple-600 text-white"
+                  ? "bg-linear-to-r from-cyan-500 to-purple-600 text-white"
                   : "bg-gray-100 text-gray-600"
               }`}
             >
@@ -566,7 +421,7 @@ const AdGenieDashboard = () => {
               onClick={() => setViewMode("list")}
               className={`p-2 rounded-xl transition-colors ${
                 viewMode === "list"
-                  ? "bg-gradient-to-r from-cyan-500 to-purple-600 text-white"
+                  ? "bg-linear-to-r from-cyan-500 to-purple-600 text-white"
                   : "bg-gray-100 text-gray-600"
               }`}
             >
@@ -589,7 +444,7 @@ const AdGenieDashboard = () => {
             key={ad.id}
             className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-xl transition-all"
           >
-            <div className="aspect-video bg-gradient-to-br from-cyan-400 via-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-2xl">
+            <div className="aspect-video bg-linear-to-br from-cyan-400 via-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-2xl">
               Ad Preview
             </div>
             <div className="p-6">
@@ -634,7 +489,7 @@ const AdGenieDashboard = () => {
                 <button className="flex-1 py-2 px-3 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2">
                   <Eye className="w-4 h-4" /> Preview
                 </button>
-                <button className="flex-1 py-2 px-3 bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 text-white rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2">
+                <button className="flex-1 py-2 px-3 bg-linear-to-r from-cyan-500 to-purple-600 hover:opacity-90 text-white rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2">
                   <Edit className="w-4 h-4" /> Edit
                 </button>
               </div>
@@ -813,56 +668,65 @@ const AdGenieDashboard = () => {
           Platform Performance
         </h3>
         <div className="space-y-4">
-          {platformAnalytics.map((platform, idx) => (
-            <div
-              key={idx}
-              className="p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-10 h-10 rounded-xl ${platform.color} bg-opacity-10 flex items-center justify-center`}
-                  >
-                    <platform.icon />
+          {platformAnalytics.map((platform, idx) => {
+            const platformIcons = {
+              Instagram: Instagram,
+              'Twitter / X': XIcon,
+              'Twitter/X': XIcon,
+              TikTok: TikTokIcon,
+              Facebook: Facebook,
+              LinkedIn: Linkedin,
+            };
+            const Icon = platformIcons[platform.platform] || Instagram;
+            return (
+              <div
+                key={idx}
+                className="p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-opacity-10 flex items-center justify-center">
+                      {typeof Icon === 'function' ? <Icon /> : <Icon />}
+                    </div>
+                    <span className="font-semibold text-gray-900">
+                      {platform.platform}
+                    </span>
                   </div>
-                  <span className="font-semibold text-gray-900">
-                    {platform.platform}
+                  <span
+                    className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                      platform.growth && platform.growth.startsWith("+")
+                        ? "bg-green-100 text-green-700"
+                        : "bg-red-100 text-red-700"
+                    }`}
+                  >
+                    {platform.growth}
                   </span>
                 </div>
-                <span
-                  className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                    platform.growth.startsWith("+")
-                      ? "bg-green-100 text-green-700"
-                      : "bg-red-100 text-red-700"
-                  }`}
-                >
-                  {platform.growth}
-                </span>
-              </div>
-              <div className="grid grid-cols-4 gap-4 text-sm">
-                <div>
-                  <p className="text-gray-500 mb-1">Impressions</p>
-                  <p className="font-bold text-gray-900">
-                    {platform.impressions}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-500 mb-1">Engagement</p>
-                  <p className="font-bold text-gray-900">
-                    {platform.engagement}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-500 mb-1">CTR</p>
-                  <p className="font-bold text-gray-900">{platform.ctr}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500 mb-1">Growth</p>
-                  <p className="font-bold text-gray-900">{platform.growth}</p>
+                <div className="grid grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-500 mb-1">Impressions</p>
+                    <p className="font-bold text-gray-900">
+                      {platform.impressions}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 mb-1">Engagement</p>
+                    <p className="font-bold text-gray-900">
+                      {platform.engagement}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 mb-1">CTR</p>
+                    <p className="font-bold text-gray-900">{platform.ctr}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 mb-1">Growth</p>
+                    <p className="font-bold text-gray-900">{platform.growth}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
