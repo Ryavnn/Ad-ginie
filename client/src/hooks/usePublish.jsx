@@ -72,6 +72,36 @@ export function usePublish() {
     }
   }, []);
 
+  const publishToX = useCallback(async ({ caption, imageUrl, adId }) => {
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/publish/x`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({
+          caption,
+          image_url: imageUrl,
+          ad_id: adId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to publish to X');
+      setSuccess('Successfully published to X/Twitter');
+      return data;
+    } catch (e) {
+      const errorMsg = e.message || String(e);
+      setError(errorMsg);
+      throw e;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const publishToMultiple = useCallback(async ({ caption, imageUrl, platforms, adId }) => {
     setLoading(true);
     setError(null);
@@ -85,6 +115,8 @@ export function usePublish() {
             results.facebook = await publishToFacebook({ caption, imageUrl, adId });
           } else if (platform === 'instagram') {
             results.instagram = await publishToInstagram({ caption, imageUrl, adId });
+          } else if (platform === 'x') {
+            results.x = await publishToX({ caption, imageUrl, adId });
           }
         } catch (e) {
           results[platform] = { error: e.message };
@@ -108,7 +140,7 @@ export function usePublish() {
     } finally {
       setLoading(false);
     }
-  }, [publishToFacebook, publishToInstagram]);
+  }, [publishToFacebook, publishToInstagram, publishToX]);
 
   const getFacebookPages = useCallback(async () => {
     try {
@@ -174,6 +206,7 @@ export function usePublish() {
     success,
     publishToFacebook,
     publishToInstagram,
+    publishToX,
     publishToMultiple,
     getFacebookPages,
     getInstagramAccounts,

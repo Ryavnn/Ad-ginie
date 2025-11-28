@@ -881,6 +881,82 @@ def get_instagram_insights(ig_media_id, page_access_token):
         print(f"Error fetching Instagram insights: {e}")
         return None
 
+# --- Twitter/X API Helpers ---
+
+def publish_to_twitter(access_token, caption, image_url=None):
+    """Publish a tweet with optional image"""
+    try:
+        # First, if there's an image, upload it
+        media_id = None
+        if image_url:
+            try:
+                # Download the image
+                img_resp = requests.get(image_url, timeout=10)
+                img_resp.raise_for_status()
+                
+                # Upload media to Twitter
+                media_upload_url = 'https://upload.twitter.com/1.1/media/upload.json'
+                files = {'media_data': img_resp.content}
+                
+                media_resp = requests.post(
+                    media_upload_url,
+                    files=files,
+                    headers={'Authorization': f'Bearer {access_token}'},
+                    timeout=10
+                )
+                media_resp.raise_for_status()
+                media_data = media_resp.json()
+                media_id = media_data.get('media', {}).get('media_id_string')
+                print(f"Media uploaded with ID: {media_id}")
+            except Exception as e:
+                print(f"Warning: Failed to upload image to Twitter: {e}")
+        
+        # Create the tweet
+        tweet_url = 'https://api.twitter.com/2/tweets'
+        payload = {
+            'text': caption
+        }
+        
+        if media_id:
+            payload['media'] = {
+                'media_ids': [media_id]
+            }
+        
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json'
+        }
+        
+        resp = requests.post(tweet_url, json=payload, headers=headers, timeout=10)
+        resp.raise_for_status()
+        result = resp.json()
+        tweet_id = result.get('data', {}).get('id')
+        
+        print(f"Tweet published with ID: {tweet_id}")
+        return tweet_id, None
+    except Exception as e:
+        error_msg = str(e)
+        print(f"Error publishing to Twitter/X: {error_msg}")
+        return None, error_msg
+
+def get_twitter_insights(access_token, tweet_id):
+    """Get engagement metrics for a tweet"""
+    try:
+        url = f'https://api.twitter.com/2/tweets/{tweet_id}'
+        resp = requests.get(
+            url,
+            params={
+                'tweet.fields': 'public_metrics,created_at,author_id'
+            },
+            headers={'Authorization': f'Bearer {access_token}'},
+            timeout=10
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        print(f"Error fetching Twitter insights: {e}")
+        return None
+
 # --- API Routes ---
 
 @app.route('/api/generate-ad', methods=['POST'])
@@ -1509,6 +1585,98 @@ def publish_to_instagram_route(current_user):
         db.session.rollback()
         print(f"Error in publish_to_instagram_route: {e}")
         return jsonify({'message': f'Error publishing to Instagram: {str(e)}'}), 500
+
+
+@app.route('/api/publish/x', methods=['POST'])
+@token_required
+def publish_to_x_route(current_user):
+    """Publish an ad to Twitter/X"""
+    try:
+        data = request.get_json()
+        
+        caption = data.get('caption')
+        image_url = data.get('image_url')
+        ad_id = data.get('ad_id')
+        
+        if not caption:
+            return jsonify({'message': 'Caption is required'}), 400
+        
+        # Get user's X/Twitter account
+        x_account = SocialAccount.query.filter_by(
+            user_id=current_user.id,
+            provider='x',
+            connected=True
+        ).first()
+        
+        if not x_account or not x_account.token:
+            return jsonify({'message': 'No connected X/Twitter account found. Please connect X first.'}), 400
+        
+        # Publish to X/Twitter
+        tweet_id, error = publish_to_twitter(x_account.token, caption, image_url)
+        
+        if error:
+            return jsonify({'message': f'Failed to publish to X: {error}'}), 500
+        
+        # Update ad status if provided
+        if ad_id:
+            try:
+                ad = db.session.get(Ad, ad_id)
+                if ad and ad.user_id == current_user.id:
+                    ad.status = 'Posted'
+                    ad.published_at = datetime.utcnow()
+                    db.session.commit()
+                    
+                    # Log activity
+                    activity = Activity(
+                        user_id=current_user.id,
+                        type='post',
+                        message=f'Published to X: {caption[:50]}...',
+                        icon_type='x'
+                    )
+                    db.session.add(activity)
+                    db.session.commit()
+            except Exception as e:
+                print(f"Error updating ad status: {e}")
+        
+        return jsonify({
+            'message': 'Successfully published to X/Twitter',
+            'tweet_id': tweet_id
+        }), 201
+    
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in publish_to_x_route: {e}")
+        return jsonify({'message': f'Error publishing to X: {str(e)}'}), 500
+
+
+@app.route('/api/insights/x/<tweet_id>', methods=['GET'])
+@token_required
+def get_x_tweet_insights(current_user, tweet_id):
+    """Get insights for an X/Twitter tweet"""
+    try:
+        # Get user's X/Twitter account
+        x_account = SocialAccount.query.filter_by(
+            user_id=current_user.id,
+            provider='x',
+            connected=True
+        ).first()
+        
+        if not x_account or not x_account.token:
+            return jsonify({'message': 'No connected X/Twitter account found'}), 400
+        
+        # Fetch insights
+        insights = get_twitter_insights(x_account.token, tweet_id)
+        
+        if not insights:
+            return jsonify({'message': 'Failed to retrieve insights'}), 500
+        
+        return jsonify({
+            'insights': insights
+        }), 200
+    
+    except Exception as e:
+        print(f"Error fetching X insights: {e}")
+        return jsonify({'message': f'Error fetching insights: {str(e)}'}), 500
 
 
 @app.route('/api/insights/facebook/<post_id>', methods=['GET'])
