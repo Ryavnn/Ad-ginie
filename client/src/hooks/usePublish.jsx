@@ -32,10 +32,13 @@ export function usePublish() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to publish to Facebook');
       setSuccess('Successfully published to Facebook');
+      // Dispatch a global notification event
+      try { window.dispatchEvent(new CustomEvent('adgenie-notification', { detail: { title: 'Published', message: 'Published to Facebook', type: 'success' } })); } catch(e) {}
       return data;
     } catch (e) {
       const errorMsg = e.message || String(e);
       setError(errorMsg);
+      try { window.dispatchEvent(new CustomEvent('adgenie-notification', { detail: { title: 'Publish Failed', message: errorMsg, type: 'error' } })); } catch(e) {}
       throw e;
     } finally {
       setLoading(false);
@@ -62,10 +65,12 @@ export function usePublish() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to publish to Instagram');
       setSuccess('Successfully published to Instagram');
+      try { window.dispatchEvent(new CustomEvent('adgenie-notification', { detail: { title: 'Published', message: 'Published to Instagram', type: 'success' } })); } catch(e) {}
       return data;
     } catch (e) {
       const errorMsg = e.message || String(e);
       setError(errorMsg);
+      try { window.dispatchEvent(new CustomEvent('adgenie-notification', { detail: { title: 'Publish Failed', message: errorMsg, type: 'error' } })); } catch(e) {}
       throw e;
     } finally {
       setLoading(false);
@@ -92,10 +97,12 @@ export function usePublish() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to publish to X');
       setSuccess('Successfully published to X/Twitter');
+      try { window.dispatchEvent(new CustomEvent('adgenie-notification', { detail: { title: 'Published', message: 'Published to X/Twitter', type: 'success' } })); } catch(e) {}
       return data;
     } catch (e) {
       const errorMsg = e.message || String(e);
       setError(errorMsg);
+      try { window.dispatchEvent(new CustomEvent('adgenie-notification', { detail: { title: 'Publish Failed', message: errorMsg, type: 'error' } })); } catch(e) {}
       throw e;
     } finally {
       setLoading(false);
@@ -123,10 +130,12 @@ export function usePublish() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to publish to TikTok');
       setSuccess('Successfully published to TikTok');
+      try { window.dispatchEvent(new CustomEvent('adgenie-notification', { detail: { title: 'Published', message: 'Published to TikTok', type: 'success' } })); } catch(e) {}
       return data;
     } catch (e) {
       const errorMsg = e.message || String(e);
       setError(errorMsg);
+      try { window.dispatchEvent(new CustomEvent('adgenie-notification', { detail: { title: 'Publish Failed', message: errorMsg, type: 'error' } })); } catch(e) {}
       throw e;
     } finally {
       setLoading(false);
@@ -159,16 +168,19 @@ export function usePublish() {
       const failedCount = Object.values(results).filter(r => r.error).length;
       if (failedCount === 0) {
         setSuccess(`Successfully published to ${platforms.join(', ')}`);
+        try { window.dispatchEvent(new CustomEvent('adgenie-notification', { detail: { title: 'Published', message: `Published to ${platforms.join(', ')}`, type: 'success' } })); } catch(e) {}
       } else if (failedCount === platforms.length) {
         throw new Error(`Failed to publish to any platform`);
       } else {
         setSuccess(`Published to ${platforms.length - failedCount} of ${platforms.length} platforms`);
+        try { window.dispatchEvent(new CustomEvent('adgenie-notification', { detail: { title: 'Partial Publish', message: `Published to ${platforms.length - failedCount} of ${platforms.length} platforms`, type: 'success' } })); } catch(e) {}
       }
 
       return results;
     } catch (e) {
       const errorMsg = e.message || String(e);
       setError(errorMsg);
+      try { window.dispatchEvent(new CustomEvent('adgenie-notification', { detail: { title: 'Publish Failed', message: errorMsg, type: 'error' } })); } catch(e) {}
       throw e;
     } finally {
       setLoading(false);

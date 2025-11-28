@@ -81,8 +81,10 @@ export const useAdGenerator = () => {
       // generated caption and the URL of the generated image.
       // e.g., { caption: "...", imageUrl: "https://.../image.png" }
       setGeneratedAd(data);
+      try { window.dispatchEvent(new CustomEvent('adgenie-notification', { detail: { title: 'Ad Generated', message: 'Your AI ad caption is ready', type: 'success' } })); } catch(e) {}
     } catch (err) {
       setError(err.message || "An unknown error occurred.");
+      try { window.dispatchEvent(new CustomEvent('adgenie-notification', { detail: { title: 'Generation Failed', message: err.message || 'Failed to generate ad', type: 'error' } })); } catch(e) {}
     } finally {
       setIsLoading(false);
     }

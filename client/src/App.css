@@ -1,1 +1,66 @@
 @import "tailwindcss";
+
+:root {
+	--c1: #d7c9b6; /* light */
+	--c2: #b59a7f; /* mid */
+	--c3: #8f6c4e; /* dark */
+	--c4: #5d4a35; /* darkest */
+
+	--c1-rgb: 215,201,182;
+	--c2-rgb: 181,154,127;
+	--c3-rgb: 143,108,78;
+	--c4-rgb: 93,74,53;
+
+	--on-light: var(--c4);
+	--on-dark: #ffffff;
+}
+
+/* Map common semantic / utility classes used in the app to the new palette. */
+
+.bg-white { background-color: var(--c1) !important; }
+.bg-gray-50 { background-color: var(--c1) !important; }
+
+.text-gray-900 { color: var(--c4) !important; }
+.text-gray-700 { color: var(--c3) !important; }
+.text-gray-500, .text-gray-400 { color: var(--c2) !important; }
+
+.border-gray-200, .border-gray-300 { border-color: var(--c2) !important; }
+
+/* Gradients: map bright/purple/cyan gradients to palette gradients */
+[class*="bg-gradient-to-r"][class*="from-cyan-500"][class*="to-purple-600"],
+[class*="from-purple-500"][class*="to-blue-500"],
+[class*="from-purple-400"][class*="to-blue-400"] {
+	background-image: linear-gradient(90deg, rgba(var(--c2-rgb),1), rgba(var(--c3-rgb),1)) !important;
+	color: var(--on-dark) !important;
+}
+
+[class*="bg-gradient-to-br"][class*="from-cyan-50"][class*="to-purple-50"] {
+	background-image: linear-gradient(135deg, rgba(var(--c1-rgb),1), rgba(var(--c2-rgb),1)) !important;
+	color: var(--on-light) !important;
+}
+
+/* Buttons and primary actions */
+.bg-gradient-to-r[class*="from-cyan-500"] { color: var(--on-dark) !important; }
+
+/* Map various colored text utilities to palette (blue/pink/indigo/etc -> palette tones) */
+.text-blue-600, .text-blue-500, .text-pink-600, .text-purple-200 { color: var(--c3) !important; }
+
+/* Success / error mappings */
+.text-green-600, .bg-green-50, .border-green-200 { color: var(--c3) !important; border-color: rgba(var(--c3-rgb),0.2) !important; }
+.text-red-600, .bg-red-50, .border-red-200 { color: var(--c4) !important; border-color: rgba(var(--c4-rgb),0.2) !important; }
+
+/* Muted / hover states */
+.hover\\:bg-gray-50:hover { background-color: var(--c1) !important; }
+.hover\\:text-gray-600:hover { color: var(--c3) !important; }
+.hover\\:border-blue-500:hover { border-color: var(--c3) !important; }
+.hover\\:border-pink-500:hover { border-color: var(--c3) !important; }
+
+/* Small utilities used on login page */
+.bg-gradient-to-br[class*="from-purple-900"][class*="to-blue-900"] {
+	background-image: linear-gradient(135deg, rgba(var(--c4-rgb),1), rgba(var(--c3-rgb),1)) !important;
+}
+.bg-purple-500, .bg-blue-500, .bg-indigo-500 { background-color: var(--c3) !important; }
+.bg-purple-400, .to-blue-400 { background-color: var(--c2) !important; }
+
+/* Don't override true-black overlay or explicit `.bg-black` used for modal backdrops */
+/* Keep `.bg-black` and `.text-white` as-is so overlays and white text remain functional. */

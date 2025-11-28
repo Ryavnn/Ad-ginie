@@ -52,9 +52,11 @@ export function useAds() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to create ad');
       await fetchAds();
+      try { window.dispatchEvent(new CustomEvent('adgenie-notification', { detail: { title: 'Ad Created', message: 'Draft saved', type: 'success' } })); } catch(e) {}
       return data.ad;
     } catch (e) {
       setError(e.message || String(e));
+      try { window.dispatchEvent(new CustomEvent('adgenie-notification', { detail: { title: 'Save Failed', message: e.message || String(e), type: 'error' } })); } catch(e) {}
       throw e;
     } finally {
       setLoading(false);
@@ -76,9 +78,11 @@ export function useAds() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to update ad');
       await fetchAds();
+      try { window.dispatchEvent(new CustomEvent('adgenie-notification', { detail: { title: 'Ad Updated', message: 'Ad updated successfully', type: 'success' } })); } catch(e) {}
       return data.ad;
     } catch (e) {
       setError(e.message || String(e));
+      try { window.dispatchEvent(new CustomEvent('adgenie-notification', { detail: { title: 'Update Failed', message: e.message || String(e), type: 'error' } })); } catch(e) {}
       throw e;
     } finally {
       setLoading(false);
@@ -99,9 +103,11 @@ export function useAds() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to delete ad');
       await fetchAds();
+      try { window.dispatchEvent(new CustomEvent('adgenie-notification', { detail: { title: 'Ad Deleted', message: 'Ad deleted successfully', type: 'success' } })); } catch(e) {}
       return true;
     } catch (e) {
       setError(e.message || String(e));
+      try { window.dispatchEvent(new CustomEvent('adgenie-notification', { detail: { title: 'Delete Failed', message: e.message || String(e), type: 'error' } })); } catch(e) {}
       throw e;
     } finally {
       setLoading(false);

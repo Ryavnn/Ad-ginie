@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useContext, useRef, useEffect } from "react";
 import {
   BarChart3,
   Calendar,
@@ -38,6 +38,7 @@ import {
 import { useAdGenerator } from "../hooks/useAdGenrator";
 import { useAds } from "../hooks/useAds";
 import { useAnalytics } from "../hooks/useAnalytics";
+import { NotificationContext } from "../components/NotificationProvider";
 import CreateAdView from "../components/CreateAdView";
 import ConnectedAccountsView from "../components/ConnectedAppView";
 
@@ -170,36 +171,87 @@ const AdGenieDashboard = () => {
     </div>
   );
 
-  const TopNav = () => (
-    <div className="fixed top-0 left-64 right-0 bg-white/80 backdrop-blur-lg border-b border-gray-200 z-10">
-      <div className="flex items-center justify-between px-8 py-4">
-        <div className="flex-1 max-w-xl">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search ads, campaigns, analytics..."
-              className="w-full pl-10 pr-4 py-2 bg-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500"
-            />
-          </div>
-        </div>
+  // Top navigation with notifications dropdown
+  const TopNav = () => {
+    const notif = useContext(NotificationContext) || {};
+    const { toasts = [], unreadCount = 0, markRead = () => {}, markAllRead = () => {}, clearAll = () => {} } = notif;
+    const [open, setOpen] = useState(false);
+    const panelRef = useRef(null);
 
-        <div className="flex items-center gap-4">
-          <button className="relative p-2 hover:bg-gray-100 rounded-xl transition-colors">
-            <Calendar className="w-5 h-5 text-gray-600" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-          </button>
-          <button className="relative p-2 hover:bg-gray-100 rounded-xl transition-colors">
-            <MessageSquare className="w-5 h-5 text-gray-600" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-          </button>
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500 to-purple-600 flex items-center justify-center text-white font-bold cursor-pointer">
-            AB
+    useEffect(() => {
+      const onDoc = (e) => {
+        if (panelRef.current && !panelRef.current.contains(e.target)) setOpen(false);
+      };
+      if (open) document.addEventListener('mousedown', onDoc);
+      return () => document.removeEventListener('mousedown', onDoc);
+    }, [open]);
+
+    return (
+      <div className="fixed top-0 left-64 right-0 bg-white/80 backdrop-blur-lg border-b border-gray-200 z-10">
+        <div className="flex items-center justify-between px-8 py-4">
+          <div className="flex-1 max-w-xl">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search ads, campaigns, analytics..."
+                className="w-full pl-10 pr-4 py-2 bg-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <button className="relative p-2 hover:bg-gray-100 rounded-xl transition-colors">
+              <Calendar className="w-5 h-5 text-gray-600" />
+              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+            </button>
+
+            {/* Notifications button and panel */}
+            <div className="relative" ref={panelRef}>
+              <button onClick={() => setOpen(!open)} className="relative p-2 hover:bg-gray-100 rounded-xl transition-colors">
+                <svg className="w-5 h-5 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0 1 18.6 14.2V11c0-3.07-1.63-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v3.2c0 .538-.214 1.055-.595 1.395L4 17h5m6 0a3 3 0 1 1-6 0h6z" />
+                </svg>
+                {unreadCount > 0 && <span className="absolute -top-0 -right-0 translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">{unreadCount}</span>}
+              </button>
+
+              {open && (
+                <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-gray-200 z-20">
+                  <div className="p-3 border-b border-gray-100 flex items-center justify-between">
+                    <strong>Notifications</strong>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => { markAllRead(); }} className="text-xs text-gray-500 hover:underline">Mark all</button>
+                      <button onClick={() => { clearAll(); }} className="text-xs text-gray-500 hover:underline">Clear</button>
+                    </div>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto">
+                    {toasts.length === 0 && <div className="p-4 text-sm text-gray-500">No notifications</div>}
+                    {toasts.slice().reverse().map((n) => (
+                      <div key={n.id} className={`p-3 border-b last:border-b-0 cursor-pointer ${n.read ? 'bg-white' : 'bg-gray-50'}`} onClick={() => { markRead(n.id); }}>
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm font-medium text-gray-900">{n.title || (n.type === 'error' ? 'Error' : 'Notification')}</div>
+                          <div className="text-xs text-gray-400">{n.createdAt ? new Date(n.createdAt).toLocaleTimeString() : ''}</div>
+                        </div>
+                        <div className="text-xs text-gray-600 mt-1">{n.message}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button className="relative p-2 hover:bg-gray-100 rounded-xl transition-colors">
+              <MessageSquare className="w-5 h-5 text-gray-600" />
+              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+            </button>
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500 to-purple-600 flex items-center justify-center text-white font-bold cursor-pointer">
+              AB
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const DashboardView = () => (
     <div className="space-y-6">
@@ -915,27 +967,6 @@ const AdGenieDashboard = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-200">
-        <h3 className="text-xl font-bold text-gray-900 mb-6">
-          Subscription & Billing
-        </h3>
-        <div className="p-6 bg-gradient-to-br from-cyan-50 to-purple-50 rounded-xl border-2 border-cyan-500">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h4 className="text-lg font-bold text-gray-900">Pro Plan</h4>
-              <p className="text-sm text-gray-600">
-                Unlimited ads, all platforms
-              </p>
-            </div>
-            <p className="text-3xl font-bold text-gray-900">
-              $49<span className="text-lg text-gray-500">/mo</span>
-            </p>
-          </div>
-          <button className="w-full py-3 bg-gradient-to-r from-cyan-500 to-purple-600 text-white hover:opacity-90 rounded-xl font-semibold transition-all">
-            Manage Subscription
-          </button>
-        </div>
-      </div>
 
       <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-200">
         <h3 className="text-xl font-bold text-gray-900 mb-6">
