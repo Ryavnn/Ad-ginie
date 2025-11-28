@@ -673,12 +673,27 @@ def get_facebook_page_token(user_access_token):
     try:
         api_version = os.getenv('FACEBOOK_API_VERSION', 'v18.0')
         url = f"https://graph.facebook.com/{api_version}/me/accounts"
+        
+        print(f"Fetching Facebook accounts from {url}")
         resp = requests.get(url, params={'access_token': user_access_token}, timeout=10)
         resp.raise_for_status()
         data = resp.json()
+        
+        # Check for errors in response
+        if 'error' in data:
+            print(f"Facebook API error: {data.get('error')}")
+            return None
+        
         accounts = data.get('data', [])
+        print(f"Found {len(accounts)} Facebook accounts")
+        
         if accounts:
-            return accounts[0].get('access_token')
+            page_token = accounts[0].get('access_token')
+            page_id = accounts[0].get('id')
+            print(f"Using page {page_id} with token")
+            return page_token
+        
+        print("No Facebook accounts found in response")
         return None
     except Exception as e:
         print(f"Error getting Facebook page token: {e}")
@@ -690,8 +705,10 @@ def get_instagram_business_accounts(page_access_token):
         api_version = os.getenv('FACEBOOK_API_VERSION', 'v18.0')
         page_id = os.getenv('FACEBOOK_PAGE_ID')
         if not page_id:
+            print("FACEBOOK_PAGE_ID not configured")
             return []
         
+        # First try: Get directly from page
         url = f"https://graph.facebook.com/{api_version}/{page_id}"
         resp = requests.get(
             url, 
@@ -703,8 +720,33 @@ def get_instagram_business_accounts(page_access_token):
         )
         resp.raise_for_status()
         data = resp.json()
-        ig_account = data.get('instagram_business_account', {})
-        return [ig_account] if ig_account.get('id') else []
+        
+        # Check if instagram_business_account is nested
+        ig_account = data.get('instagram_business_account')
+        if ig_account and ig_account.get('id'):
+            return [{
+                'id': ig_account.get('id'),
+                'username': ig_account.get('username', 'instagram_account')
+            }]
+        
+        # Second try: Get from page's Instagram accounts endpoint
+        url = f"https://graph.facebook.com/{api_version}/{page_id}/instagram_accounts"
+        resp = requests.get(
+            url,
+            params={
+                'fields': 'id,username',
+                'access_token': page_access_token
+            },
+            timeout=10
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        accounts = data.get('data', [])
+        if accounts:
+            return accounts
+        
+        print(f"No Instagram business accounts found. Response: {data}")
+        return []
     except Exception as e:
         print(f"Error getting Instagram business accounts: {e}")
         return []
@@ -742,8 +784,11 @@ def publish_to_instagram(ig_account_id, page_access_token, caption, image_url=No
     try:
         api_version = os.getenv('FACEBOOK_API_VERSION', 'v18.0')
         
-        if not ig_account_id or not image_url:
-            raise ValueError("Instagram account ID and image URL are required")
+        if not ig_account_id:
+            raise ValueError("Instagram account ID is required")
+        
+        if not image_url:
+            raise ValueError("Image URL is required for Instagram posts")
         
         # Step 1: Create a media object
         media_url = f"https://graph.instagram.com/{api_version}/{ig_account_id}/media"
@@ -753,13 +798,22 @@ def publish_to_instagram(ig_account_id, page_access_token, caption, image_url=No
             'access_token': page_access_token
         }
         
+        print(f"Creating Instagram media at {media_url}")
         media_resp = requests.post(media_url, data=media_payload, timeout=10)
+        
+        # Log the response for debugging
+        print(f"Media creation response status: {media_resp.status_code}")
+        print(f"Media creation response: {media_resp.text}")
+        
         media_resp.raise_for_status()
         media_data = media_resp.json()
         media_id = media_data.get('id')
         
         if not media_id:
-            raise ValueError("Failed to create Instagram media object")
+            error_msg = media_data.get('error', {}).get('message', 'Failed to get media ID')
+            raise ValueError(f"Failed to create Instagram media object: {error_msg}")
+        
+        print(f"Media created with ID: {media_id}")
         
         # Step 2: Publish the media
         publish_url = f"https://graph.instagram.com/{api_version}/{ig_account_id}/media_publish"
@@ -768,10 +822,22 @@ def publish_to_instagram(ig_account_id, page_access_token, caption, image_url=No
             'access_token': page_access_token
         }
         
+        print(f"Publishing media from {publish_url}")
         publish_resp = requests.post(publish_url, data=publish_payload, timeout=10)
+        
+        # Log the response for debugging
+        print(f"Publish response status: {publish_resp.status_code}")
+        print(f"Publish response: {publish_resp.text}")
+        
         publish_resp.raise_for_status()
         result = publish_resp.json()
-        return result.get('id'), None
+        post_id = result.get('id')
+        
+        if not post_id:
+            raise ValueError("Failed to publish Instagram media")
+        
+        print(f"Successfully published to Instagram with post ID: {post_id}")
+        return post_id, None
     except Exception as e:
         error_msg = str(e)
         print(f"Error publishing to Instagram: {error_msg}")
@@ -1037,7 +1103,7 @@ def oauth_start(current_user, provider):
             'client_id': client_id,
             'redirect_uri': fb_redirect,
             'state': f'user-{current_user.id}-{int(datetime.utcnow().timestamp())}',
-            'scope': 'public_profile,pages_show_list,pages_read_engagement'
+            'scope': 'public_profile,pages_show_list,pages_read_engagement,instagram_basic,instagram_content_publish'
         }
         url = f"https://www.facebook.com/v16.0/dialog/oauth?{urlencode(params)}"
         return jsonify({'authUrl': url}), 200
@@ -1377,6 +1443,7 @@ def publish_to_instagram_route(current_user):
         caption = data.get('caption')
         image_url = data.get('image_url')
         ad_id = data.get('ad_id')
+        ig_account_id = data.get('ig_account_id')  # Can be provided directly
         
         if not caption or not image_url:
             return jsonify({'message': 'Caption and image URL are required'}), 400
@@ -1389,19 +1456,22 @@ def publish_to_instagram_route(current_user):
         ).first()
         
         if not fb_account or not fb_account.token:
-            return jsonify({'message': 'No connected Facebook account found'}), 400
+            return jsonify({'message': 'No connected Facebook account found. Please connect Facebook first.'}), 400
         
         # Get page access token
         page_token = get_facebook_page_token(fb_account.token)
         if not page_token:
-            return jsonify({'message': 'Failed to get Facebook page access token'}), 500
+            return jsonify({'message': 'Failed to get Facebook page access token. Try reconnecting your Facebook account.'}), 500
         
-        # Get Instagram business accounts
-        ig_accounts = get_instagram_business_accounts(page_token)
-        if not ig_accounts:
-            return jsonify({'message': 'No Instagram business account connected'}), 400
-        
-        ig_account_id = ig_accounts[0].get('id')
+        # If account ID not provided, get Instagram business accounts
+        if not ig_account_id:
+            ig_accounts = get_instagram_business_accounts(page_token)
+            if not ig_accounts:
+                return jsonify({'message': 'No Instagram business account connected to your Facebook page. Please connect an Instagram business account to your Facebook page.'}), 400
+            
+            ig_account_id = ig_accounts[0].get('id')
+            if not ig_account_id:
+                return jsonify({'message': 'Instagram account ID is missing'}), 400
         
         # Publish to Instagram
         media_id, error = publish_to_instagram(ig_account_id, page_token, caption, image_url)
@@ -1566,28 +1636,33 @@ def get_instagram_accounts(current_user):
         ).first()
         
         if not fb_account or not fb_account.token:
-            return jsonify({'message': 'No connected Facebook account found'}), 400
+            return jsonify({'message': 'No connected Facebook account found', 'accounts': []}), 200
         
         # Get page access token
         page_token = get_facebook_page_token(fb_account.token)
         if not page_token:
-            return jsonify({'message': 'Failed to get Facebook page access token'}), 500
+            return jsonify({'message': 'Failed to get Facebook page access token', 'accounts': []}), 200
         
         # Get Instagram accounts
         ig_accounts = get_instagram_business_accounts(page_token)
+        
+        if not ig_accounts:
+            print("Warning: No Instagram business accounts found")
         
         return jsonify({
             'accounts': [
                 {
                     'id': acc.get('id'),
-                    'username': acc.get('username')
+                    'username': acc.get('username', 'instagram_account')
                 }
                 for acc in ig_accounts
-            ]
+            ],
+            'message': 'Instagram accounts retrieved successfully' if ig_accounts else 'No Instagram business accounts connected'
         }), 200
     
     except Exception as e:
         print(f"Error fetching Instagram accounts: {e}")
+        return jsonify({'message': f'Error fetching Instagram accounts: {str(e)}', 'accounts': []}), 500
         return jsonify({'message': f'Error fetching accounts: {str(e)}'}), 500
 
 
