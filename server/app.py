@@ -4,7 +4,7 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import jwt
 import os
 from functools import wraps
@@ -957,6 +957,207 @@ def get_twitter_insights(access_token, tweet_id):
         print(f"Error fetching Twitter insights: {e}")
         return None
 
+# --- TikTok API Helpers ---
+
+def publish_to_tiktok(access_token, caption, image_url=None, video_url=None):
+    """Publish a post to TikTok using the TikTok API.
+    
+    TikTok content creation requires either:
+    - A video file (video_url) - preferred way
+    - An image with caption - will create a simple image post
+    """
+    try:
+        base_url = 'https://open-api.tiktok.com/v1/post/publish/action/publish/'
+        
+        # TikTok API requires video content for most use cases
+        # For image-only content, we'll attempt to use the media upload endpoint
+        
+        if video_url:
+            # If video URL is provided, download and prepare for upload
+            try:
+                video_resp = requests.get(video_url, timeout=10)
+                video_resp.raise_for_status()
+                video_data = video_resp.content
+                
+                # Initialize video upload
+                init_url = 'https://open-api.tiktok.com/v1/post/publish/video/init/'
+                init_payload = {
+                    'source_info': {
+                        'source': 'CREATIVE_CENTER',
+                        'platform': 'TK'
+                    }
+                }
+                
+                headers = {
+                    'Authorization': f'Bearer {access_token}',
+                    'Content-Type': 'application/json'
+                }
+                
+                init_resp = requests.post(init_url, json=init_payload, headers=headers, timeout=10)
+                init_resp.raise_for_status()
+                init_data = init_resp.json()
+                
+                if init_data.get('data', {}).get('upload_token'):
+                    upload_token = init_data['data']['upload_token']
+                    
+                    # Upload the video
+                    upload_url = 'https://open-api.tiktok.com/v1/post/publish/video/upload/'
+                    upload_headers = {
+                        'Authorization': f'Bearer {access_token}'
+                    }
+                    
+                    files = {
+                        'video': ('video.mp4', video_data, 'video/mp4')
+                    }
+                    data = {
+                        'upload_token': upload_token
+                    }
+                    
+                    upload_resp = requests.post(upload_url, files=files, data=data, headers=upload_headers, timeout=30)
+                    upload_resp.raise_for_status()
+                    
+                    # Publish the video
+                    publish_payload = {
+                        'post_info': {
+                            'title': caption[:150],
+                            'description': caption
+                        },
+                        'source_info': {
+                            'source': 'CREATIVE_CENTER',
+                            'platform': 'TK'
+                        },
+                        'media_type': 'VIDEO',
+                        'upload_token': upload_token
+                    }
+                    
+                    pub_headers = {
+                        'Authorization': f'Bearer {access_token}',
+                        'Content-Type': 'application/json'
+                    }
+                    
+                    pub_resp = requests.post(base_url, json=publish_payload, headers=pub_headers, timeout=10)
+                    pub_resp.raise_for_status()
+                    result = pub_resp.json()
+                    
+                    if result.get('data', {}).get('publish_id'):
+                        publish_id = result['data']['publish_id']
+                        print(f"Successfully published to TikTok with publish ID: {publish_id}")
+                        return publish_id, None
+                    else:
+                        error_msg = result.get('error', {}).get('message', 'Unknown error during publish')
+                        return None, error_msg
+            except Exception as e:
+                error_msg = str(e)
+                print(f"Error publishing video to TikTok: {error_msg}")
+                return None, error_msg
+        
+        # Fallback for image-based posts
+        if image_url:
+            try:
+                # Download image
+                img_resp = requests.get(image_url, timeout=10)
+                img_resp.raise_for_status()
+                image_data = img_resp.content
+                
+                # For image posts, use a simpler approach with TikTok's image upload
+                # Initialize image upload
+                init_url = 'https://open-api.tiktok.com/v1/post/publish/image/init/'
+                init_payload = {
+                    'source_info': {
+                        'source': 'CREATIVE_CENTER',
+                        'platform': 'TK'
+                    }
+                }
+                
+                headers = {
+                    'Authorization': f'Bearer {access_token}',
+                    'Content-Type': 'application/json'
+                }
+                
+                init_resp = requests.post(init_url, json=init_payload, headers=headers, timeout=10)
+                init_resp.raise_for_status()
+                init_data = init_resp.json()
+                
+                if init_data.get('data', {}).get('upload_token'):
+                    upload_token = init_data['data']['upload_token']
+                    
+                    # Upload the image
+                    upload_url = 'https://open-api.tiktok.com/v1/post/publish/image/upload/'
+                    upload_headers = {
+                        'Authorization': f'Bearer {access_token}'
+                    }
+                    
+                    files = {
+                        'image': ('image.jpg', image_data, 'image/jpeg')
+                    }
+                    data = {
+                        'upload_token': upload_token
+                    }
+                    
+                    upload_resp = requests.post(upload_url, files=files, data=data, headers=upload_headers, timeout=10)
+                    upload_resp.raise_for_status()
+                    
+                    # Publish the image
+                    publish_payload = {
+                        'post_info': {
+                            'title': caption[:150],
+                            'description': caption
+                        },
+                        'source_info': {
+                            'source': 'CREATIVE_CENTER',
+                            'platform': 'TK'
+                        },
+                        'media_type': 'IMAGE',
+                        'upload_token': upload_token
+                    }
+                    
+                    pub_headers = {
+                        'Authorization': f'Bearer {access_token}',
+                        'Content-Type': 'application/json'
+                    }
+                    
+                    pub_resp = requests.post(base_url, json=publish_payload, headers=pub_headers, timeout=10)
+                    pub_resp.raise_for_status()
+                    result = pub_resp.json()
+                    
+                    if result.get('data', {}).get('publish_id'):
+                        publish_id = result['data']['publish_id']
+                        print(f"Successfully published to TikTok with publish ID: {publish_id}")
+                        return publish_id, None
+                    else:
+                        error_msg = result.get('error', {}).get('message', 'Unknown error during publish')
+                        return None, error_msg
+            except Exception as e:
+                error_msg = str(e)
+                print(f"Error publishing image to TikTok: {error_msg}")
+                return None, error_msg
+        
+        return None, "No video or image URL provided"
+    
+    except Exception as e:
+        error_msg = str(e)
+        print(f"Error publishing to TikTok: {error_msg}")
+        return None, error_msg
+
+def get_tiktok_insights(access_token, publish_id):
+    """Get engagement metrics for a TikTok post"""
+    try:
+        url = f'https://open-api.tiktok.com/v1/post/publish/status/fetch/'
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json'
+        }
+        payload = {
+            'publish_id': publish_id
+        }
+        
+        resp = requests.post(url, json=payload, headers=headers, timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        print(f"Error fetching TikTok insights: {e}")
+        return None
+
 # --- API Routes ---
 
 @app.route('/api/generate-ad', methods=['POST'])
@@ -1163,7 +1364,7 @@ def oauth_start(current_user, provider):
             'client_id': client_id,
             'redirect_uri': os.getenv('X_REDIRECT_URI') or f"{_get_redirect_base()}/api/accounts/oauth/x/callback",
             'scope': 'tweet.read users.read offline.access',
-            'state': f'user-{current_user.id}-{int(datetime.utcnow().timestamp())}',
+            'state': f'user-{current_user.id}-{int(datetime.now(timezone.utc).timestamp())}',
             # PKCE flow normally requires code_challenge here. For simple testing, we omit PKCE.
         }
         url = f"https://twitter.com/i/oauth2/authorize?{urlencode(params)}"
@@ -1195,7 +1396,7 @@ def oauth_start(current_user, provider):
             'response_type': 'code',
             'scope': 'user.info.basic',
             'redirect_uri': tt_redirect,
-            'state': f'user-{current_user.id}-{int(datetime.utcnow().timestamp())}'
+            'state': f'user-{current_user.id}-{int(datetime.now(timezone.utc).timestamp())}'
         }
         url = f"https://open-api.tiktok.com/platform/oauth/connect?{urlencode(params)}"
         return jsonify({'authUrl': url}), 200
@@ -1649,6 +1850,72 @@ def publish_to_x_route(current_user):
         return jsonify({'message': f'Error publishing to X: {str(e)}'}), 500
 
 
+@app.route('/api/publish/tiktok', methods=['POST'])
+@token_required
+def publish_to_tiktok_route(current_user):
+    """Publish an ad to TikTok"""
+    try:
+        data = request.get_json()
+        
+        caption = data.get('caption')
+        image_url = data.get('image_url')
+        video_url = data.get('video_url')
+        ad_id = data.get('ad_id')
+        
+        if not caption:
+            return jsonify({'message': 'Caption is required'}), 400
+        
+        if not image_url and not video_url:
+            return jsonify({'message': 'Either image_url or video_url is required'}), 400
+        
+        # Get user's TikTok account
+        tiktok_account = SocialAccount.query.filter_by(
+            user_id=current_user.id,
+            provider='tiktok',
+            connected=True
+        ).first()
+        
+        if not tiktok_account or not tiktok_account.token:
+            return jsonify({'message': 'No connected TikTok account found. Please connect TikTok first.'}), 400
+        
+        # Publish to TikTok
+        publish_id, error = publish_to_tiktok(tiktok_account.token, caption, image_url, video_url)
+        
+        if error:
+            return jsonify({'message': f'Failed to publish to TikTok: {error}'}), 500
+        
+        # Update ad status if provided
+        if ad_id:
+            try:
+                ad = db.session.get(Ad, ad_id)
+                if ad and ad.user_id == current_user.id:
+                    ad.status = 'Posted'
+                    ad.published_at = datetime.utcnow()
+                    db.session.commit()
+                    
+                    # Log activity
+                    activity = Activity(
+                        user_id=current_user.id,
+                        type='post',
+                        message=f'Published to TikTok: {caption[:50]}...',
+                        icon_type='tiktok'
+                    )
+                    db.session.add(activity)
+                    db.session.commit()
+            except Exception as e:
+                print(f"Error updating ad status: {e}")
+        
+        return jsonify({
+            'message': 'Successfully published to TikTok',
+            'publish_id': publish_id
+        }), 201
+    
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in publish_to_tiktok_route: {e}")
+        return jsonify({'message': f'Error publishing to TikTok: {str(e)}'}), 500
+
+
 @app.route('/api/insights/x/<tweet_id>', methods=['GET'])
 @token_required
 def get_x_tweet_insights(current_user, tweet_id):
@@ -1746,6 +2013,36 @@ def get_instagram_media_insights(current_user, media_id):
     
     except Exception as e:
         print(f"Error fetching Instagram insights: {e}")
+        return jsonify({'message': f'Error fetching insights: {str(e)}'}), 500
+
+
+@app.route('/api/insights/tiktok/<publish_id>', methods=['GET'])
+@token_required
+def get_tiktok_post_insights(current_user, publish_id):
+    """Get insights for a TikTok post"""
+    try:
+        # Get user's TikTok account
+        tiktok_account = SocialAccount.query.filter_by(
+            user_id=current_user.id,
+            provider='tiktok',
+            connected=True
+        ).first()
+        
+        if not tiktok_account or not tiktok_account.token:
+            return jsonify({'message': 'No connected TikTok account found'}), 400
+        
+        # Fetch insights
+        insights = get_tiktok_insights(tiktok_account.token, publish_id)
+        
+        if not insights:
+            return jsonify({'message': 'Failed to retrieve insights'}), 500
+        
+        return jsonify({
+            'insights': insights
+        }), 200
+    
+    except Exception as e:
+        print(f"Error fetching TikTok insights: {e}")
         return jsonify({'message': f'Error fetching insights: {str(e)}'}), 500
 
 

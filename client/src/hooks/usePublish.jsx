@@ -102,6 +102,37 @@ export function usePublish() {
     }
   }, []);
 
+  const publishToTikTok = useCallback(async ({ caption, imageUrl, adId, videoUrl }) => {
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/publish/tiktok`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({
+          caption,
+          image_url: imageUrl,
+          video_url: videoUrl,
+          ad_id: adId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to publish to TikTok');
+      setSuccess('Successfully published to TikTok');
+      return data;
+    } catch (e) {
+      const errorMsg = e.message || String(e);
+      setError(errorMsg);
+      throw e;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const publishToMultiple = useCallback(async ({ caption, imageUrl, platforms, adId }) => {
     setLoading(true);
     setError(null);
@@ -117,6 +148,8 @@ export function usePublish() {
             results.instagram = await publishToInstagram({ caption, imageUrl, adId });
           } else if (platform === 'x') {
             results.x = await publishToX({ caption, imageUrl, adId });
+          } else if (platform === 'tiktok') {
+            results.tiktok = await publishToTikTok({ caption, imageUrl, adId });
           }
         } catch (e) {
           results[platform] = { error: e.message };
@@ -140,7 +173,7 @@ export function usePublish() {
     } finally {
       setLoading(false);
     }
-  }, [publishToFacebook, publishToInstagram, publishToX]);
+  }, [publishToFacebook, publishToInstagram, publishToX, publishToTikTok]);
 
   const getFacebookPages = useCallback(async () => {
     try {
@@ -180,9 +213,16 @@ export function usePublish() {
 
   const getInsights = useCallback(async ({ platform, postId }) => {
     try {
-      const endpoint = platform === 'facebook' 
-        ? `/api/insights/facebook/${postId}`
-        : `/api/insights/instagram/${postId}`;
+      let endpoint;
+      if (platform === 'facebook') {
+        endpoint = `/api/insights/facebook/${postId}`;
+      } else if (platform === 'instagram') {
+        endpoint = `/api/insights/instagram/${postId}`;
+      } else if (platform === 'tiktok') {
+        endpoint = `/api/insights/tiktok/${postId}`;
+      } else {
+        endpoint = `/api/insights/x/${postId}`;
+      }
 
       const res = await fetch(`${API_BASE}${endpoint}`, {
         method: 'GET',
@@ -207,6 +247,7 @@ export function usePublish() {
     publishToFacebook,
     publishToInstagram,
     publishToX,
+    publishToTikTok,
     publishToMultiple,
     getFacebookPages,
     getInstagramAccounts,

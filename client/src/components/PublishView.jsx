@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Facebook, Instagram, Twitter, Loader, CheckCircle, AlertCircle } from 'lucide-react';
+import { Facebook, Instagram, Twitter, Loader, CheckCircle, AlertCircle, Music } from 'lucide-react';
 import { usePublish } from '../hooks/usePublish';
 
 const PublishView = ({ ad, onClose }) => {
-  const { loading, error, success, publishToFacebook, publishToInstagram, publishToX, publishToMultiple } = usePublish();
+  const { loading, error, success, publishToFacebook, publishToInstagram, publishToX, publishToTikTok, publishToMultiple } = usePublish();
   const [selectedPlatforms, setSelectedPlatforms] = useState([]);
 
   const handlePlatformToggle = (platform) => {
@@ -37,6 +37,12 @@ const PublishView = ({ ad, onClose }) => {
           });
         } else if (platform === 'x') {
           await publishToX({
+            caption: ad.caption,
+            imageUrl: ad.image_url,
+            adId: ad.id,
+          });
+        } else if (platform === 'tiktok') {
+          await publishToTikTok({
             caption: ad.caption,
             imageUrl: ad.image_url,
             adId: ad.id,
@@ -114,6 +120,17 @@ const PublishView = ({ ad, onClose }) => {
               />
               <Twitter className="w-5 h-5 text-black ml-3" />
               <span className="ml-3 font-medium text-gray-700">X / Twitter</span>
+            </label>
+
+            <label className="flex items-center p-3 border-2 border-gray-200 rounded-lg hover:border-black cursor-pointer transition-colors">
+              <input
+                type="checkbox"
+                checked={selectedPlatforms.includes('tiktok')}
+                onChange={() => handlePlatformToggle('tiktok')}
+                className="w-5 h-5 text-black"
+              />
+              <Music className="w-5 h-5 text-black ml-3" />
+              <span className="ml-3 font-medium text-gray-700">TikTok</span>
             </label>
           </div>
 

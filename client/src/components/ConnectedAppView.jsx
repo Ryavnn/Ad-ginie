@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, Check, X, Instagram, Twitter, Facebook, Linkedin } from "lucide-react";
+import { Plus, Check, X, Instagram, Twitter, Facebook, Linkedin, Music } from "lucide-react";
 import { useAccounts } from "../hooks/useAccounts";
 
 const PROVIDER_META = {
@@ -8,7 +8,7 @@ const PROVIDER_META = {
   x: { icon: Twitter, color: "bg-black", label: "Twitter / X" },
   facebook: { icon: Facebook, color: "bg-blue-600", label: "Facebook" },
   linkedin: { icon: Linkedin, color: "bg-blue-700", label: "LinkedIn" },
-  tiktok: { icon: Twitter, color: "bg-black", label: "TikTok" },
+  tiktok: { icon: Music, color: "bg-black", label: "TikTok" },
 };
 
 const ConnectedAccountsView = () => {
