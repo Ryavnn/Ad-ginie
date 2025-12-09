@@ -41,6 +41,7 @@ import { useAnalytics } from "../hooks/useAnalytics";
 import { NotificationContext } from "../components/NotificationProvider";
 import CreateAdView from "../components/CreateAdView";
 import ConnectedAccountsView from "../components/ConnectedAppView";
+import PostView from "../components/PostView";
 
 // Twitter/X Icon Component
 const XIcon = () => (
@@ -135,6 +136,7 @@ const AdGenieDashboard = () => {
           { id: "dashboard", icon: Home, label: "Dashboard" },
           { id: "ads", icon: Grid, label: "Recent Ads" },
           { id: "create", icon: Plus, label: "Create Ad" },
+          { id: "post", icon: Image, label: "Create Post" },
           { id: "calendar", icon: Calendar, label: "Calendar" },
           { id: "analytics", icon: BarChart3, label: "Analytics" },
           { id: "history", icon: FileText, label: "Post History" },
@@ -1005,6 +1007,8 @@ const AdGenieDashboard = () => {
         return <RecentAdsView />;
       case "create":
         return <CreateAdView />;
+      case "post":
+        return <PostView />;
       case "calendar":
         return <CalendarView />;
       case "analytics":
